@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>DemoOCR</AssemblyName>
+    <RootNamespace>DemoOCR</RootNamespace>
+    <ApplicationIcon>Assets\App.ico</ApplicationIcon>
+
+    <!-- 单文件原生独立打包配置（不生成pdb调试文件） -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <ProjectReference Include="..\DemoOCR.Core\DemoOCR.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\App.ico" />
+  </ItemGroup>
+
+  <!-- 保持单文件发布目录不含多余的模型、静态库和调试文件。 -->
+  <Target Name="CleanPublishOutput" AfterTargets="Publish">
+    <ItemGroup>
+      <FilesToDelete Include="$(PublishDir)*.lib;$(PublishDir)*.pdb" />
+      <DirectoriesToDelete Include="$(PublishDir)models" />
+    </ItemGroup>
+    <Delete Files="@(FilesToDelete)" />
+    <RemoveDir Directories="@(DirectoriesToDelete)" />
+  </Target>
+
+</Project>

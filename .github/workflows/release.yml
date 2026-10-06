@@ -1,0 +1,86 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content -LiteralPath src/Directory.Build.props -Raw
+          $version = [string]$props.Project.PropertyGroup.Version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+              throw "Invalid product version: $version"
+          }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+              throw "Tag must match the product version: v$version"
+          }
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "version=$version" -Encoding utf8
+      - name: Build Release
+        run: dotnet build DemoOCR.slnx -c Release --warnaserror
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish Windows x64
+        shell: pwsh
+        run: ./src/scripts/publish.ps1
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $projectPath = Join-Path $env:GITHUB_WORKSPACE 'src/DemoOCR.Wpf/DemoOCR.Wpf.csproj'
+          $publishPath = & dotnet msbuild $projectPath -p:Configuration=Release -p:RuntimeIdentifier=win-x64 -getProperty:PublishDir
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to read the publish directory.' }
+          if (-not [IO.Path]::IsPathRooted($publishPath)) {
+              $publishPath = Join-Path (Split-Path -Parent $projectPath) $publishPath
+          }
+          $assetName = "DemoOCR-$env:RELEASE_TAG-win-x64.exe"
+          $assetPath = Join-Path $publishPath $assetName
+          Copy-Item -LiteralPath (Join-Path $publishPath 'DemoOCR.exe') -Destination $assetPath
+          $checksumPath = "$assetPath.sha256"
+          $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath $checksumPath -Value "$hash  $assetName" -Encoding ascii
+          & gh release create $env:RELEASE_TAG $assetPath $checksumPath --title "DemoOCR V$env:VERSION" --generate-notes --verify-tag
+          if ($LASTEXITCODE -ne 0) { throw "Release creation failed: $LASTEXITCODE" }

@@ -1,0 +1,9 @@
+# IDE 与构建产物
+.vs/
+.vscode/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates

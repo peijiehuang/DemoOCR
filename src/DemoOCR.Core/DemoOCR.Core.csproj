@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- 公共图像和快捷键类型依赖 WPF，Core 仍是 Windows 类库。 -->
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RapidOcrNet" Version="4.2.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Models\**\*" />
+  </ItemGroup>
+
+  <!-- 自带模型由程序集释放，禁用 RapidOcrNet 的默认模型复制。 -->
+  <Target Name="PreventRapidOcrModelCopy" BeforeTargets="CopyModelsPublish;CopyModelsBuild">
+    <ItemGroup>
+      <Models Remove="@(Models)" />
+    </ItemGroup>
+  </Target>
+</Project>

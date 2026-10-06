@@ -1,0 +1,233 @@
+<Window x:Class="DemoOCR.Views.OcrResultWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:DemoOCR.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance vm:OcrResultViewModel}"
+        Title="DemoOCR - 识别结果"
+        Icon="{StaticResource ApplicationIcon}"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="{Binding IsTopmost}"
+        MinWidth="600"
+        MinHeight="380"
+        KeyDown="Window_KeyDown">
+    <Window.Resources>
+        <!-- 现代化紧凑按钮样式 -->
+        <Style x:Key="ToolBtnStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#333333" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#EAEAEA" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#D8D8D8" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- 外层卡片边框与阴影效果 -->
+    <Border Background="#FFFFFF"
+            BorderBrush="#CCCCCC"
+            BorderThickness="1"
+            CornerRadius="8"
+            Margin="6">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="12" Opacity="0.3" ShadowDepth="3" />
+        </Border.Effect>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="28" />
+            </Grid.RowDefinitions>
+
+            <!-- 顶部标题栏与工具按钮（采用 Grid 分列，确保小窗口时右侧操作按钮绝对优先完整呈现） -->
+            <Border Grid.Row="0"
+                    Background="#F8F9FA"
+                    BorderBrush="#EEEEEE"
+                    BorderThickness="0,0,0,1"
+                    CornerRadius="8,8,0,0"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid Margin="10,0,6,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 左侧：标题与识别耗时状态 -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="{StaticResource ApplicationIcon}" Width="16" Height="16" Margin="0,0,5,0" />
+                        <TextBlock Text="DemoOCR 识别结果" FontSize="12" FontWeight="SemiBold" Foreground="#333333" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding StatusBadgeText}" Foreground="{Binding StatusBadgeColor}" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <!-- 右侧：固定操作按钮栏（置顶、复制全文、复制图片、保存、关闭） -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Style="{StaticResource ToolBtnStyle}" Content="📌 置顶" Command="{Binding TogglePinCommand}" ToolTip="切换置顶显示" />
+                        <Button Style="{StaticResource ToolBtnStyle}" Content="📋 复制全文" Command="{Binding CopyFullTextCommand}" ToolTip="复制全部识别文字 (Ctrl+C)" />
+                        <Button Style="{StaticResource ToolBtnStyle}" Content="🖼️ 复制图片" Command="{Binding CopyImageCommand}" ToolTip="复制截图到剪贴板" />
+                        <Button Style="{StaticResource ToolBtnStyle}" Content="💾 保存" Command="{Binding SaveImageCommand}" ToolTip="保存截图到文件" />
+                        <Button Style="{StaticResource ToolBtnStyle}" Content="✕" Command="{Binding CloseCommand}" ToolTip="关闭窗口 (Esc)" Foreground="#EE3333" FontWeight="Bold" Padding="8,4" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 中间内容视图 (分左右两栏: 左侧图文标注缩放视口, 右侧纯文本编辑器) -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="240" />
+                    <ColumnDefinition Width="260" MinWidth="180" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 左侧：图像与文字标注视口 -->
+                <ScrollViewer Grid.Column="0"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              Background="#F0F2F5"
+                              PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                    <Grid x:Name="ViewportGrid" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Grid.LayoutTransform>
+                            <ScaleTransform x:Name="ViewportScale" ScaleX="1.0" ScaleY="1.0" />
+                        </Grid.LayoutTransform>
+                        <!-- 截图底图 (1:1 物理像素对齐) -->
+                        <Image Source="{Binding CroppedImage}"
+                               Width="{Binding CroppedImage.PixelWidth}"
+                               Height="{Binding CroppedImage.PixelHeight}"
+                               Stretch="Fill"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Top" />
+
+                        <!-- 文字检测框图层 (MVVM ItemsControl 空间坐标渲染) -->
+                        <ItemsControl ItemsSource="{Binding TextBlocks}"
+                                      Width="{Binding CroppedImage.PixelWidth}"
+                                      Height="{Binding CroppedImage.PixelHeight}"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Top">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                    <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:TextBlockItemViewModel}">
+                                    <Border Width="{Binding Width}"
+                                            Height="{Binding Height}"
+                                            CornerRadius="2"
+                                            Cursor="Hand"
+                                            ToolTip="{Binding ToolTipContent}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="BorderThickness" Value="1" />
+                                                <Setter Property="BorderBrush" Value="#780078D7" />
+                                                <Setter Property="Background" Value="#280078D7" />
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="BorderBrush" Value="#0078D7" />
+                                                        <Setter Property="Background" Value="#500078D7" />
+                                                    </Trigger>
+                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                        <Setter Property="BorderThickness" Value="2" />
+                                                        <Setter Property="BorderBrush" Value="#FF8C00" />
+                                                        <Setter Property="Background" Value="#640078D7" />
+                                                        <Setter Property="Panel.ZIndex" Value="100" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Border.InputBindings>
+                                            <MouseBinding MouseAction="LeftClick"
+                                                          Command="{Binding DataContext.SelectBlockCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                          CommandParameter="{Binding}" />
+                                        </Border.InputBindings>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- 分割线 -->
+                <GridSplitter Grid.Column="0" Width="3" Background="#E0E0E0" HorizontalAlignment="Right" VerticalAlignment="Stretch" />
+
+                <!-- 右侧：全文文本编辑与复制区 -->
+                <Grid Grid.Column="1" Background="#FFFFFF">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Background="#F8F9FA" BorderBrush="#EEEEEE" BorderThickness="0,0,0,1" Padding="8,4">
+                        <TextBlock Text="{Binding HeaderInfoText}" FontSize="11" Foreground="#666666" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBox x:Name="TxtFullContent"
+                             Grid.Row="1"
+                             Text="{Binding FullText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             BorderThickness="0"
+                             Padding="8"
+                             FontSize="13"
+                             FontFamily="Microsoft YaHei, Segoe UI"
+                             Foreground="#222222"
+                             SelectionBrush="#0078D7"
+                             SelectionOpacity="0.45"
+                             IsInactiveSelectionHighlightEnabled="True"
+                             SelectionChanged="TxtFullContent_SelectionChanged">
+                        <TextBox.Resources>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#0078D7" />
+                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFF" />
+                        </TextBox.Resources>
+                    </TextBox>
+                </Grid>
+            </Grid>
+
+            <!-- 底部状态栏 -->
+            <Border Grid.Row="2"
+                    Background="#F8F9FA"
+                    BorderBrush="#EEEEEE"
+                    BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,8,8"
+                    Padding="10,0">
+                <DockPanel LastChildFill="False">
+                    <TextBlock DockPanel.Dock="Left"
+                               Text="{Binding StatusInfoText}"
+                               FontSize="11"
+                               Foreground="#888888"
+                               VerticalAlignment="Center" />
+                    <TextBlock DockPanel.Dock="Right"
+                               Text="{Binding ToastMessage}"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="#0078D7"
+                               VerticalAlignment="Center" />
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
